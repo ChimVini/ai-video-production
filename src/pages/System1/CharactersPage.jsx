@@ -37,7 +37,7 @@ export default function CharactersPage() {
   const roleColor = { protagonist: 'badge-green', antagonist: 'badge-red', supporting: 'badge-blue', minor: 'badge-gray', extra: 'badge-gray' };
 
   return (
-    <div className="max-w-5xl">
+    <div className="w-full">
       <PageHeader
         title="Character Development"
         subtitle="System 1 — Personality, Background, Relationships"

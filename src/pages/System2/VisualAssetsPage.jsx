@@ -49,7 +49,7 @@ export default function VisualAssetsPage() {
   };
 
   return (
-    <div className="max-w-5xl">
+    <div className="w-full">
       <PageHeader
         title="Visual Assets"
         subtitle="System 2 — Character Design, Environments, Architecture"

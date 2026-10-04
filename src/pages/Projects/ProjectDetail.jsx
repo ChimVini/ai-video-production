@@ -61,7 +61,7 @@ export default function ProjectDetail() {
   const isSeries = project.type !== 'single';
 
   return (
-    <div className="max-w-5xl">
+    <div className="w-full">
       <button onClick={() => navigate('/projects')} className="btn-ghost mb-3 flex items-center gap-1">
         <ArrowLeft className="w-3.5 h-3.5" /> Back to Projects
       </button>

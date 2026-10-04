@@ -44,7 +44,7 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="max-w-5xl">
+    <div className="w-full">
       <PageHeader title="Dashboard" subtitle="AI Video Production Pipeline Overview" />
 
       {/* Stats grid */}

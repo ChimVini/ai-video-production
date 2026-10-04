@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom';
 import {
   Plus, Trash2, Network, X, ChevronRight, ChevronDown,
-  ZoomIn, ZoomOut, ListTodo, StickyNote, GitBranch, Minus
+  ZoomIn, ZoomOut, ListTodo, StickyNote, GitBranch, Minus,
+  MessageSquare, Edit3
 } from 'lucide-react';
 import Modal from '../../components/common/Modal';
 import ConfirmDialog from '../../components/common/ConfirmDialog';
@@ -47,8 +48,10 @@ function CrownBadge({ halfH }) {
 
 /* ═══════════════════════════════════════════════
    Force-directed layout — runs in real-time
+   Enhanced: size-aware repulsion, overlap avoidance,
+   adaptive rest lengths
    ═══════════════════════════════════════════════ */
-function useForceLayout() {
+function useForceLayout(nodeSizesRef) {
   const nodesRef = useRef([]);
   const pcLinksRef = useRef([]);   // parent-child
   const uLinksRef = useRef([]);    // user connections
@@ -65,7 +68,7 @@ function useForceLayout() {
     nodes.forEach((n, i) => {
       if (!pos[n.id]) {
         const angle = (i / Math.max(nodes.length, 1)) * Math.PI * 2;
-        const r = 100 + nodes.length * 18;
+        const r = 140 + nodes.length * 22;
         pos[n.id] = { x: n.pos_x || Math.cos(angle) * r, y: n.pos_y || Math.sin(angle) * r };
         vel[n.id] = { x: 0, y: 0 };
       }
@@ -83,59 +86,90 @@ function useForceLayout() {
   const tick = useCallback(() => {
     const pos = posRef.current;
     const vel = velRef.current;
+    const nodes = nodesRef.current;
     const ids = Object.keys(pos);
     if (ids.length === 0) { frameRef.current = null; return; }
+
+    // Build a quick lookup for node data
+    const nodeMap = {};
+    nodes.forEach(n => { nodeMap[n.id] = n; });
 
     const forces = {};
     ids.forEach(id => { forces[id] = { x: 0, y: 0 }; });
 
-    // Repulsion between all nodes
+    // Get node bounding size for overlap-aware repulsion
+    const sizes = nodeSizesRef?.current || {};
+    function getHalfSize(id) {
+      const n = nodeMap[id];
+      const s = sizes[id] || (n ? getNodeSize(n._depth || 0) : getNodeSize(0));
+      return { hw: s.w / 2, hh: s.h / 2 };
+    }
+
+    // Size-aware repulsion between all nodes
     for (let i = 0; i < ids.length; i++) {
       for (let j = i + 1; j < ids.length; j++) {
         const a = pos[ids[i]], b = pos[ids[j]];
         if (!a || !b) continue;
         let dx = (b.x - a.x) || 0.1, dy = (b.y - a.y) || 0.1;
         const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-        const force = 5500 / (dist * dist);
+
+        // Calculate minimum safe distance based on node sizes
+        const sA = getHalfSize(ids[i]), sB = getHalfSize(ids[j]);
+        const minDist = Math.max(sA.hw + sB.hw, sA.hh + sB.hh) + 30; // 30px padding
+
+        // Strong repulsion with size-aware minimum
+        let force;
+        if (dist < minDist) {
+          // Extra strong push when overlapping
+          force = 8000 / (dist * dist) + (minDist - dist) * 0.8;
+        } else {
+          force = 8000 / (dist * dist);
+        }
+
         const fx = (dx / dist) * force, fy = (dy / dist) * force;
         forces[ids[i]].x -= fx; forces[ids[i]].y -= fy;
         forces[ids[j]].x += fx; forces[ids[j]].y += fy;
       }
     }
 
-    // Parent-child attraction (strong, short, with downward bias)
+    // Parent-child attraction (adaptive rest length based on node sizes)
     pcLinksRef.current.forEach(({ source, target }) => {
       const a = pos[source], b = pos[target];
       if (!a || !b) return;
       let dx = b.x - a.x, dy = b.y - a.y;
       const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-      const force = (dist - 130) * 0.055;
+      // Adaptive rest length: bigger nodes need more space
+      const sA = getHalfSize(source), sB = getHalfSize(target);
+      const restLen = sA.hh + sB.hh + 80; // natural spacing
+      const force = (dist - restLen) * 0.05;
       const fx = (dx / dist) * force, fy = (dy / dist) * force;
       forces[source].x += fx; forces[source].y += fy;
       forces[target].x -= fx; forces[target].y -= fy;
       // Children below parents (hierarchy bias)
       if (b.y < a.y + 50) {
-        forces[target].y += 0.7;
-        forces[source].y -= 0.25;
+        forces[target].y += 0.8;
+        forces[source].y -= 0.3;
       }
     });
 
-    // User connections (weaker, longer)
+    // User connections (weaker, longer, also adaptive)
     uLinksRef.current.forEach(({ source, target }) => {
       const a = pos[source], b = pos[target];
       if (!a || !b) return;
       let dx = b.x - a.x, dy = b.y - a.y;
       const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-      const force = (dist - 200) * 0.012;
+      const sA = getHalfSize(source), sB = getHalfSize(target);
+      const restLen = sA.hw + sB.hw + 140;
+      const force = (dist - restLen) * 0.012;
       const fx = (dx / dist) * force, fy = (dy / dist) * force;
       forces[source].x += fx; forces[source].y += fy;
       forces[target].x -= fx; forces[target].y -= fy;
     });
 
-    // Central gravity
+    // Central gravity (gentle)
     ids.forEach(id => {
-      forces[id].x -= pos[id].x * 0.002;
-      forces[id].y -= pos[id].y * 0.002;
+      forces[id].x -= pos[id].x * 0.0015;
+      forces[id].y -= pos[id].y * 0.0015;
     });
 
     // Apply forces (skip dragged node)
@@ -143,8 +177,12 @@ function useForceLayout() {
     ids.forEach(id => {
       if (dragRef.current === id) return;
       vel[id] = vel[id] || { x: 0, y: 0 };
-      vel[id].x = (vel[id].x + forces[id].x) * 0.62;
-      vel[id].y = (vel[id].y + forces[id].y) * 0.62;
+      vel[id].x = (vel[id].x + forces[id].x) * 0.58;
+      vel[id].y = (vel[id].y + forces[id].y) * 0.58;
+      // Clamp velocity to prevent explosion
+      const maxV = 15;
+      vel[id].x = Math.max(-maxV, Math.min(maxV, vel[id].x));
+      vel[id].y = Math.max(-maxV, Math.min(maxV, vel[id].y));
       pos[id].x += vel[id].x;
       pos[id].y += vel[id].y;
       totalMovement += Math.abs(vel[id].x) + Math.abs(vel[id].y);
@@ -176,37 +214,58 @@ function useForceLayout() {
 
 /* ═══════════════════════════════════════════════
    Tree auto-layout calculator
+   Arranges each root tree side-by-side horizontally
+   (left to right) with proper spacing
    ═══════════════════════════════════════════════ */
 function calculateTreeLayout(nodes) {
   const pos = {};
   const roots = nodes.filter(n => !n.parent_id);
   const LEVEL_H = 160;
-  const MIN_SPACING = 100;
+  const NODE_H_SPACING = 220; // horizontal space per leaf node
+  const TREE_GAP = 120;       // gap between root trees
 
-  function subtreeWidth(id) {
-    const kids = nodes.filter(n => n.parent_id === id);
+  // Build children lookup for fast access
+  const childrenOf = {};
+  nodes.forEach(n => {
+    if (n.parent_id) {
+      if (!childrenOf[n.parent_id]) childrenOf[n.parent_id] = [];
+      childrenOf[n.parent_id].push(n);
+    }
+  });
+
+  function subtreeLeafCount(id) {
+    const kids = childrenOf[id] || [];
     if (kids.length === 0) return 1;
-    return kids.reduce((s, c) => s + subtreeWidth(c.id), 0);
+    return kids.reduce((s, c) => s + subtreeLeafCount(c.id), 0);
   }
 
-  function layout(id, x, y, width) {
+  function layoutSubtree(id, x, y, width) {
     pos[id] = { x, y };
-    const kids = nodes.filter(n => n.parent_id === id);
+    const kids = childrenOf[id] || [];
     if (kids.length === 0) return;
-    const totalW = kids.reduce((s, c) => s + subtreeWidth(c.id), 0);
+    const totalLeaves = kids.reduce((s, c) => s + subtreeLeafCount(c.id), 0);
     let cx = x - width / 2;
     kids.forEach(child => {
-      const cw = (subtreeWidth(child.id) / totalW) * width;
-      layout(child.id, cx + cw / 2, y + LEVEL_H, cw);
+      const cw = (subtreeLeafCount(child.id) / totalLeaves) * width;
+      layoutSubtree(child.id, cx + cw / 2, y + LEVEL_H, cw);
       cx += cw;
     });
   }
 
-  const totalWidth = Math.max(roots.length * MIN_SPACING * 3, 600);
+  // Calculate each root tree's width, then place them left to right
+  const treeWidths = roots.map(r => {
+    const leaves = subtreeLeafCount(r.id);
+    return Math.max(leaves * NODE_H_SPACING, NODE_H_SPACING);
+  });
+
+  const totalWidth = treeWidths.reduce((s, w) => s + w, 0) + Math.max(0, roots.length - 1) * TREE_GAP;
+  let cursorX = -totalWidth / 2;
+
   roots.forEach((r, i) => {
-    const rw = totalWidth / roots.length;
-    const rx = -totalWidth / 2 + rw * (i + 0.5);
-    layout(r.id, rx, -200, rw * subtreeWidth(r.id));
+    const tw = treeWidths[i];
+    const centerX = cursorX + tw / 2;
+    layoutSubtree(r.id, centerX, -200, tw);
+    cursorX += tw + TREE_GAP;
   });
 
   return pos;
@@ -322,11 +381,49 @@ function UserConnectionLine({ from, to, fromSize, toSize }) {
 }
 
 /* ═══════════════════════════════════════════════
+   Note label — centered text connected to node
+   via a thin line, no border/block
+   ═══════════════════════════════════════════════ */
+function NoteLabel({ nodePos, nodeSize, label, onEdit }) {
+  if (!nodePos || !label) return null;
+  const { w, h } = nodeSize;
+  // Position the label to the right of the node
+  const offsetX = w / 2 + 60;
+  const offsetY = -20;
+  const labelX = nodePos.x + offsetX;
+  const labelY = nodePos.y + offsetY;
+
+  // Connection line from node edge to label
+  const edgeStart = getEdgePoint(nodePos.x, nodePos.y, w / 2, h / 2, labelX, labelY);
+
+  // Measure rough text width
+  const textLen = Math.min(label.length, 30);
+  const fontSize = 11;
+  const approxW = textLen * fontSize * 0.55;
+
+  return (
+    <g style={{ cursor: 'pointer' }} onClick={onEdit}>
+      {/* Thin connection line */}
+      <line x1={edgeStart.x} y1={edgeStart.y} x2={labelX} y2={labelY}
+        stroke="rgba(139,92,246,0.25)" strokeWidth={1} strokeDasharray="3 3" />
+      {/* Small dot at connection point */}
+      <circle cx={edgeStart.x} cy={edgeStart.y} r={2.5} fill="rgba(139,92,246,0.4)" />
+      {/* Label text — centered, no border */}
+      <text x={labelX} y={labelY + 1} textAnchor="middle"
+        fill="rgba(200,200,220,0.85)" fontSize={fontSize} fontFamily="Inter,sans-serif"
+        fontStyle="italic" fontWeight={400}>
+        {label.length > 30 ? label.slice(0, 29) + '…' : label}
+      </text>
+    </g>
+  );
+}
+
+/* ═══════════════════════════════════════════════
    Node management panel (right sidebar)
    ═══════════════════════════════════════════════ */
 function NodePanel({
   node, allNodes, onClose, onCreateChild, onDelete, onRename,
-  onOpenWindow, onScaleChange, nodeScale
+  onOpenWindow, onScaleChange, nodeScale, noteLabel, onNoteLabelChange
 }) {
   const [editName, setEditName] = useState(node.name);
   const [isEditing, setIsEditing] = useState(false);
@@ -407,6 +504,20 @@ function NodePanel({
           </div>
         </div>
 
+        {/* Note Label */}
+        <div className="px-4 py-3 border-b border-s-6/20">
+          <label className="text-[10px] text-t-4 uppercase tracking-wider block mb-1.5">
+            <MessageSquare className="w-3 h-3 inline mr-1" />Note Label
+          </label>
+          <input className="input text-xs" value={noteLabel || ''}
+            onChange={e => onNoteLabelChange(e.target.value)}
+            placeholder="Add a short note label..." maxLength={60} />
+          {noteLabel && (
+            <button className="text-[10px] text-red-400 hover:text-red-300 mt-1.5"
+              onClick={() => onNoteLabelChange('')}>Remove label</button>
+          )}
+        </div>
+
         {/* Actions */}
         <div className="px-4 py-3 border-b border-s-6/20 space-y-1.5">
           <button className="btn-ghost w-full text-xs flex items-center gap-2 justify-start py-2"
@@ -480,14 +591,16 @@ export default function NodeCanvasPage() {
   const [showDelete, setShowDelete] = useState(false);
   const [nodeScales, setNodeScales] = useState({});
   const [openWindows, setOpenWindows] = useState([]);
+  const [nodeLabels, setNodeLabels] = useState({});
   const svgRef = useRef(null);
   const [viewBox, setViewBox] = useState({ x: -600, y: -400, w: 1200, h: 800 });
   const [isPanning, setIsPanning] = useState(false);
   const panStart = useRef({ x: 0, y: 0, vx: 0, vy: 0 });
   const lastClickRef = useRef({ id: null, time: 0 });
+  const nodeSizesRef = useRef({});
 
   const { positions, posRef, velRef, dragRef, start: startPhysics, stop: stopPhysics, syncNodes, syncLinks } =
-    useForceLayout();
+    useForceLayout(nodeSizesRef);
 
   // Build links from data
   const parentChildLinks = useMemo(() =>
@@ -531,6 +644,17 @@ export default function NodeCanvasPage() {
     await loadRecursive(roots, 0);
     setAllNodes(all);
     syncNodes(all);
+
+    // Update nodeSizesRef for force layout
+    const sizesMap = {};
+    all.forEach(n => { sizesMap[n.id] = getNodeSize(n._depth, nodeScales[n.id]); });
+    nodeSizesRef.current = sizesMap;
+
+    // Load note labels from localStorage
+    try {
+      const stored = localStorage.getItem('node-canvas-labels');
+      if (stored) setNodeLabels(JSON.parse(stored));
+    } catch {}
 
     try {
       const conns = await api.getAllNodeConnections();
@@ -679,6 +803,18 @@ export default function NodeCanvasPage() {
     loadData();
   }
 
+  // ── Note label management ───────────────────
+  function handleNoteLabelChange(text) {
+    if (!selectedId) return;
+    setNodeLabels(prev => {
+      const next = { ...prev };
+      if (text) next[selectedId] = text;
+      else delete next[selectedId];
+      try { localStorage.setItem('node-canvas-labels', JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }
+
   // ── Floating windows ─────────────────────────
   function toggleWindow(nodeId) {
     setOpenWindows(prev => {
@@ -785,6 +921,19 @@ export default function NodeCanvasPage() {
                 onMouseDown={e => handleNodeMouseDown(node.id, e)} />
             ))}
 
+            {/* Note labels — centered text connected via line */}
+            {allNodes.map(node => {
+              const label = nodeLabels[node.id];
+              if (!label) return null;
+              return (
+                <NoteLabel key={`lbl-${node.id}`}
+                  nodePos={positions[node.id]}
+                  nodeSize={getNodeSize(node._depth, nodeScales[node.id])}
+                  label={label}
+                  onEdit={() => { setSelectedId(node.id); setShowPanel(true); }} />
+              );
+            })}
+
             {/* Empty state */}
             {allNodes.length === 0 && (
               <text x={0} y={0} textAnchor="middle" fill="#5c5c6a" fontSize={14} fontFamily="Inter,sans-serif">
@@ -804,7 +953,9 @@ export default function NodeCanvasPage() {
           onRename={handleRename}
           onOpenWindow={toggleWindow}
           onScaleChange={handleNodeScaleChange}
-          nodeScale={nodeScales[selectedId]} />
+          nodeScale={nodeScales[selectedId]}
+          noteLabel={nodeLabels[selectedId]}
+          onNoteLabelChange={handleNoteLabelChange} />
       )}
 
       {/* ── Floating Todo/Note windows ─── */}

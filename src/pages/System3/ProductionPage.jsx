@@ -66,7 +66,7 @@ export default function ProductionPage() {
   const completedShots = allShots.filter(s => s.status === 'final').length;
 
   return (
-    <div className="max-w-6xl">
+    <div className="w-full">
       <PageHeader
         title="Production Pipeline"
         subtitle="System 3 — Script → Scene → Shot → Prompt → Generate → Review"

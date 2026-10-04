@@ -49,7 +49,7 @@ export default function ResourcesPage() {
   };
 
   return (
-    <div className="max-w-5xl">
+    <div className="w-full">
       <PageHeader
         title="Resource Library"
         subtitle="Research & reference materials across all projects"

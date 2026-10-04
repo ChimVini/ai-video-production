@@ -80,7 +80,7 @@ export default function ShotWorkspace() {
   const currentIdx = siblings.findIndex(s => s.id === id);
 
   return (
-    <div className="max-w-5xl">
+    <div className="w-full">
       {/* Navigation */}
       <div className="flex items-center justify-between mb-4">
         <button onClick={() => navigate('/production')} className="btn-ghost flex items-center gap-1">

@@ -30,7 +30,7 @@ export default function ProjectsPage() {
   });
 
   return (
-    <div className="max-w-5xl">
+    <div className="w-full">
       <PageHeader
         title="Projects"
         subtitle="Manage all your video projects"

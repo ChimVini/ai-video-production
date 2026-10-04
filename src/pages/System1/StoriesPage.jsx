@@ -37,7 +37,7 @@ export default function StoriesPage() {
   }
 
   return (
-    <div className="max-w-5xl">
+    <div className="w-full">
       <PageHeader
         title="Story Development"
         subtitle="System 1 — Plot, Theme, Structure"

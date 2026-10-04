@@ -477,7 +477,7 @@ export default function NodeWorkspacePage() {
   });
 
   return (
-    <div className="max-w-5xl -mt-6 -mx-6 flex flex-col h-[calc(100vh)]">
+    <div className="w-full -mt-6 -mx-6 flex flex-col h-[calc(100vh)]">
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-3 border-b border-s-6/30 bg-s-2 shrink-0">
         <div className="flex items-center gap-3">

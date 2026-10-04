@@ -34,7 +34,7 @@ export default function WorldsPage() {
   }
 
   return (
-    <div className="max-w-5xl">
+    <div className="w-full">
       <PageHeader
         title="World Development"
         subtitle="System 1 — Rules, Locations, Settings"
