@@ -105,13 +105,16 @@ function useForceLayout(nodeSizesRef) {
   }
 
   function syncNotes(noteEntries) {
-    // noteEntries: [{ id: 'note:nodeId', parentId: nodeId }]
+    // noteEntries: [{ id: 'note:dbId', parentId: nodeId, index }]
     const pos = posRef.current;
     const vel = velRef.current;
-    noteEntries.forEach(entry => {
+    noteEntries.forEach((entry, i) => {
       if (!pos[entry.id]) {
         const parentPos = pos[entry.parentId] || { x: 0, y: 0 };
-        pos[entry.id] = { x: parentPos.x + 160, y: parentPos.y - 40 };
+        // Spread notes around parent at different angles
+        const angle = (-0.5 + (entry.index || i) * 0.8) * Math.PI * 0.5;
+        const dist = 160;
+        pos[entry.id] = { x: parentPos.x + Math.cos(angle) * dist, y: parentPos.y + Math.sin(angle) * dist };
         vel[entry.id] = { x: 0, y: 0 };
       }
     });
@@ -168,21 +171,37 @@ function useForceLayout(nodeSizesRef) {
         const sA = getHalfSize(ids[i]), sB = getHalfSize(ids[j]);
         const minDist = Math.max(sA.hw + sB.hw, sA.hh + sB.hh) + 30; // 30px padding
 
-        // Weaker repulsion for notes (so they don't push real nodes too hard)
+        // Much weaker repulsion for notes — they shouldn't push real nodes
         const isNoteI = ids[i].startsWith('note:');
         const isNoteJ = ids[j].startsWith('note:');
-        const repulsionK = (isNoteI || isNoteJ) ? 3000 : 8000;
+        const bothNotes = isNoteI && isNoteJ;
+        const hasNote = isNoteI || isNoteJ;
+        const repulsionK = bothNotes ? 800 : hasNote ? 1200 : 8000;
 
         let force;
         if (dist < minDist) {
-          force = repulsionK / (dist * dist) + (minDist - dist) * 0.6;
+          const overlapPush = hasNote ? 0.15 : 0.6; // much gentler overlap push for notes
+          force = repulsionK / (dist * dist) + (minDist - dist) * overlapPush;
         } else {
           force = repulsionK / (dist * dist);
         }
 
-        const fx = (dx / dist) * force, fy = (dy / dist) * force;
-        forces[ids[i]].x -= fx; forces[ids[i]].y -= fy;
-        forces[ids[j]].x += fx; forces[ids[j]].y += fy;
+        let fxI = (dx / dist) * force, fyI = (dy / dist) * force;
+        let fxJ = fxI, fyJ = fyI;
+
+        // Notes should barely push real nodes — asymmetric force
+        if (hasNote && !bothNotes) {
+          if (isNoteI) {
+            // i is note, j is node: note gets full push, node gets almost none
+            fxJ *= 0.05; fyJ *= 0.05;
+          } else {
+            // i is node, j is note: node gets almost none, note gets full push
+            fxI *= 0.05; fyI *= 0.05;
+          }
+        }
+
+        forces[ids[i]].x -= fxI; forces[ids[i]].y -= fyI;
+        forces[ids[j]].x += fxJ; forces[ids[j]].y += fyJ;
       }
     }
 
@@ -220,17 +239,17 @@ function useForceLayout(nodeSizesRef) {
       forces[target].x -= fx; forces[target].y -= fy;
     });
 
-    // Note-to-node springs (keep notes near their parent node, no hierarchy bias)
+    // Note-to-node springs (keep notes near their parent, barely affect the node)
     noteLinksRef.current.forEach(({ source, target }) => {
       const a = pos[source], b = pos[target];
       if (!a || !b) return;
       let dx = b.x - a.x, dy = b.y - a.y;
       const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-      const restLen = 130; // comfortable distance from parent node
-      const force = (dist - restLen) * 0.04;
+      const restLen = 130;
+      const force = (dist - restLen) * 0.03;
       const fx = (dx / dist) * force, fy = (dy / dist) * force;
-      forces[source].x += fx * 0.3; forces[source].y += fy * 0.3; // weak pull on node
-      forces[target].x -= fx; forces[target].y -= fy;               // stronger pull on note
+      forces[source].x += fx * 0.02; forces[source].y += fy * 0.02; // near-zero pull on node
+      forces[target].x -= fx * 0.8;  forces[target].y -= fy * 0.8;  // note follows node
     });
 
     // No central gravity — repulsion + links are enough to keep layout stable
@@ -644,7 +663,7 @@ export default function NodeCanvasPage() {
   const [showDelete, setShowDelete] = useState(false);
   const [nodeScales, setNodeScales] = useState({});
   const [openWindows, setOpenWindows] = useState([]);
-  const [nodeNotesData, setNodeNotesData] = useState({}); // { nodeId: "full note text" }
+  const [notesList, setNotesList] = useState([]); // [{ noteId: 'note:dbId', parentId, content }]
   const svgRef = useRef(null);
   const [viewBox, setViewBox] = useState({ x: -600, y: -400, w: 1200, h: 800 });
   const [isPanning, setIsPanning] = useState(false);
@@ -677,7 +696,7 @@ export default function NodeCanvasPage() {
       roots = roots.filter(r => r.id === filterRootId);
     }
     const all = [];
-    const notesMap = {}; // nodeId -> concatenated note text
+    const collectedNotes = []; // { noteId: 'note:dbId', parentId, content }
 
     async function loadRecursive(nodeList, depth) {
       for (const node of nodeList) {
@@ -696,10 +715,12 @@ export default function NodeCanvasPage() {
           _childCount: children.length,
         });
 
-        // Collect note text for canvas display
-        if (notes.length > 0) {
-          notesMap[node.id] = notes.map(n => n.content).filter(Boolean).join('\n');
-        }
+        // Each note becomes its own separate draggable entity
+        notes.forEach(n => {
+          if (n.content && n.content.trim()) {
+            collectedNotes.push({ noteId: `note:${n.id}`, parentId: node.id, content: n.content });
+          }
+        });
 
         if (children.length > 0) await loadRecursive(children, depth + 1);
       }
@@ -707,22 +728,18 @@ export default function NodeCanvasPage() {
 
     await loadRecursive(roots, 0);
     setAllNodes(all);
-    setNodeNotesData(notesMap);
+    setNotesList(collectedNotes);
     syncNodes(all);
 
     // Update nodeSizesRef for force layout (nodes)
     const sizesMap = {};
     all.forEach(n => { sizesMap[n.id] = getNodeSize(n._depth, nodeScales[n.id]); });
 
-    // Sync note pseudo-nodes into force layout
-    const noteEntries = Object.entries(notesMap)
-      .filter(([, text]) => text && text.trim())
-      .map(([nodeId, text]) => {
-        const noteId = `note:${nodeId}`;
-        // Store note sizes for force layout repulsion
-        sizesMap[noteId] = estimateNoteSize(text);
-        return { id: noteId, parentId: nodeId };
-      });
+    // Sync individual note pseudo-nodes into force layout
+    const noteEntries = collectedNotes.map((note, idx) => {
+      sizesMap[note.noteId] = estimateNoteSize(note.content);
+      return { id: note.noteId, parentId: note.parentId, index: idx };
+    });
 
     nodeSizesRef.current = sizesMap;
     syncNotes(noteEntries);
@@ -833,7 +850,9 @@ export default function NodeCanvasPage() {
         dragRef.current = null;
       } else {
         // Click on note => select the parent node + show panel
-        const parentNodeId = noteId.replace('note:', '');
+        const noteEntry = notesList.find(n => n.noteId === noteId);
+        const parentNodeId = noteEntry ? noteEntry.parentId : null;
+        if (!parentNodeId) return;
         setSelectedId(prev => {
           const newId = prev === parentNodeId ? null : parentNodeId;
           setShowPanel(!!newId);
@@ -947,12 +966,12 @@ export default function NodeCanvasPage() {
       api.updateWorkspaceNode(id, { pos_x: Math.round(p.x), pos_y: Math.round(p.y) });
     });
     // Also reposition notes near their parent after tree layout
-    Object.keys(nodeNotesData).forEach(nodeId => {
-      const noteId = `note:${nodeId}`;
-      const parentPos = treePos[nodeId] || posRef.current[nodeId];
-      if (parentPos && posRef.current[noteId]) {
-        posRef.current[noteId] = { x: parentPos.x + 160, y: parentPos.y - 40 };
-        if (velRef.current[noteId]) velRef.current[noteId] = { x: 0, y: 0 };
+    notesList.forEach((note, i) => {
+      const parentPos = treePos[note.parentId] || posRef.current[note.parentId];
+      if (parentPos && posRef.current[note.noteId]) {
+        const angle = (-0.5 + i * 0.8) * Math.PI * 0.5;
+        posRef.current[note.noteId] = { x: parentPos.x + Math.cos(angle) * 160, y: parentPos.y + Math.sin(angle) * 160 };
+        if (velRef.current[note.noteId]) velRef.current[note.noteId] = { x: 0, y: 0 };
       }
     });
     startPhysics();
@@ -1030,17 +1049,15 @@ export default function NodeCanvasPage() {
               );
             })}
 
-            {/* Note connection lines — dashed lines from node to note text */}
-            {Object.entries(nodeNotesData).map(([nodeId, text]) => {
-              if (!text || !text.trim()) return null;
-              const noteId = `note:${nodeId}`;
-              const node = allNodes.find(n => n.id === nodeId);
+            {/* Note connection lines — dashed lines from node to each note */}
+            {notesList.map(note => {
+              const node = allNodes.find(n => n.id === note.parentId);
               if (!node) return null;
               return (
-                <NoteConnectionLine key={`nc-${nodeId}`}
-                  nodePos={positions[nodeId]}
-                  nodeSize={getNodeSize(node._depth, nodeScales[nodeId])}
-                  notePos={positions[noteId]} />
+                <NoteConnectionLine key={`nc-${note.noteId}`}
+                  nodePos={positions[note.parentId]}
+                  nodeSize={getNodeSize(node._depth, nodeScales[note.parentId])}
+                  notePos={positions[note.noteId]} />
               );
             })}
 
@@ -1053,17 +1070,13 @@ export default function NodeCanvasPage() {
                 onMouseDown={e => handleNodeMouseDown(node.id, e)} />
             ))}
 
-            {/* Note text nodes — draggable, no border, word-wrapped */}
-            {Object.entries(nodeNotesData).map(([nodeId, text]) => {
-              if (!text || !text.trim()) return null;
-              const noteId = `note:${nodeId}`;
-              return (
-                <NoteTextNode key={noteId}
-                  pos={positions[noteId]}
-                  text={text}
-                  onMouseDown={e => handleNoteMouseDown(noteId, e)} />
-              );
-            })}
+            {/* Note text nodes — each note is its own draggable entity */}
+            {notesList.map(note => (
+              <NoteTextNode key={note.noteId}
+                pos={positions[note.noteId]}
+                text={note.content}
+                onMouseDown={e => handleNoteMouseDown(note.noteId, e)} />
+            ))}
 
             {/* Empty state */}
             {allNodes.length === 0 && (
