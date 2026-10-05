@@ -1,14 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import {
   Plus, Trash2, Network, X, ChevronRight, ChevronDown,
-  ZoomIn, ZoomOut, ListTodo, StickyNote, GitBranch, Minus,
-  MessageSquare, Edit3
+  ZoomIn, ZoomOut, ListTodo, StickyNote, GitBranch, Minus
 } from 'lucide-react';
 import Modal from '../../components/common/Modal';
 import ConfirmDialog from '../../components/common/ConfirmDialog';
 import FloatingTodoNote from './FloatingTodoNote';
-import Breadcrumb from './Breadcrumb';
 
 const api = window.api;
 
@@ -25,28 +23,6 @@ function getNodeSize(depth, customScale = 1) {
     sub: Math.max(Math.round(10 * s), 6),
     rx: Math.max(Math.round(14 * s), 5),
   };
-}
-
-/* ═══════════════════════════════════════════════
-   Text wrapping utility — splits text into lines
-   of approximately `wordsPerLine` words each
-   ═══════════════════════════════════════════════ */
-function wrapNoteText(text, wordsPerLine = 6) {
-  const words = text.trim().split(/\s+/);
-  const lines = [];
-  for (let i = 0; i < words.length; i += wordsPerLine) {
-    lines.push(words.slice(i, i + wordsPerLine).join(' '));
-  }
-  return lines;
-}
-
-/* Estimate bounding size for a note text block */
-function estimateNoteSize(text) {
-  const lines = wrapNoteText(text, 6);
-  const lineHeight = 16;
-  const maxLineLen = Math.max(...lines.map(l => l.length), 1);
-  const approxW = maxLineLen * 7.2; // rough px per char at 12px
-  return { w: Math.max(approxW, 60), h: lines.length * lineHeight + 10 };
 }
 
 /* ═══════════════════════════════════════════════
@@ -70,14 +46,11 @@ function CrownBadge({ halfH }) {
 
 /* ═══════════════════════════════════════════════
    Force-directed layout — runs in real-time
-   Enhanced: size-aware repulsion, overlap avoidance,
-   adaptive rest lengths, note pseudo-nodes
    ═══════════════════════════════════════════════ */
-function useForceLayout(nodeSizesRef) {
+function useForceLayout() {
   const nodesRef = useRef([]);
   const pcLinksRef = useRef([]);   // parent-child
   const uLinksRef = useRef([]);    // user connections
-  const noteLinksRef = useRef([]); // note-to-node springs
   const posRef = useRef({});
   const velRef = useRef({});
   const dragRef = useRef(null);
@@ -91,36 +64,13 @@ function useForceLayout(nodeSizesRef) {
     nodes.forEach((n, i) => {
       if (!pos[n.id]) {
         const angle = (i / Math.max(nodes.length, 1)) * Math.PI * 2;
-        const r = 140 + nodes.length * 22;
+        const r = 100 + nodes.length * 18;
         pos[n.id] = { x: n.pos_x || Math.cos(angle) * r, y: n.pos_y || Math.sin(angle) * r };
         vel[n.id] = { x: 0, y: 0 };
       }
     });
     const ids = new Set(nodes.map(n => n.id));
-    // Clean up removed nodes but preserve note entries (note:xxx)
-    Object.keys(pos).forEach(id => {
-      if (!id.startsWith('note:') && !ids.has(id)) { delete pos[id]; delete vel[id]; }
-    });
-    start();
-  }
-
-  function syncNotes(noteEntries) {
-    // noteEntries: [{ id: 'note:nodeId', parentId: nodeId }]
-    const pos = posRef.current;
-    const vel = velRef.current;
-    noteEntries.forEach(entry => {
-      if (!pos[entry.id]) {
-        const parentPos = pos[entry.parentId] || { x: 0, y: 0 };
-        pos[entry.id] = { x: parentPos.x + 160, y: parentPos.y - 40 };
-        vel[entry.id] = { x: 0, y: 0 };
-      }
-    });
-    // Clean up stale note entries
-    const noteIds = new Set(noteEntries.map(e => e.id));
-    Object.keys(pos).forEach(id => {
-      if (id.startsWith('note:') && !noteIds.has(id)) { delete pos[id]; delete vel[id]; }
-    });
-    noteLinksRef.current = noteEntries.map(e => ({ source: e.parentId, target: e.id }));
+    Object.keys(pos).forEach(id => { if (!ids.has(id)) { delete pos[id]; delete vel[id]; } });
     start();
   }
 
@@ -132,121 +82,68 @@ function useForceLayout(nodeSizesRef) {
   const tick = useCallback(() => {
     const pos = posRef.current;
     const vel = velRef.current;
-    const nodes = nodesRef.current;
     const ids = Object.keys(pos);
     if (ids.length === 0) { frameRef.current = null; return; }
-
-    // Build a quick lookup for node data
-    const nodeMap = {};
-    nodes.forEach(n => { nodeMap[n.id] = n; });
 
     const forces = {};
     ids.forEach(id => { forces[id] = { x: 0, y: 0 }; });
 
-    // Get node bounding size for overlap-aware repulsion
-    const sizes = nodeSizesRef?.current || {};
-    function getHalfSize(id) {
-      // Notes have sizes stored in nodeSizesRef with 'note:' prefix
-      if (id.startsWith('note:')) {
-        const s = sizes[id] || { w: 100, h: 40 };
-        return { hw: s.w / 2, hh: s.h / 2 };
-      }
-      const n = nodeMap[id];
-      const s = sizes[id] || (n ? getNodeSize(n._depth || 0) : getNodeSize(0));
-      return { hw: s.w / 2, hh: s.h / 2 };
-    }
-
-    // Size-aware repulsion between all entities (nodes + notes)
+    // Repulsion between all nodes
     for (let i = 0; i < ids.length; i++) {
       for (let j = i + 1; j < ids.length; j++) {
         const a = pos[ids[i]], b = pos[ids[j]];
         if (!a || !b) continue;
         let dx = (b.x - a.x) || 0.1, dy = (b.y - a.y) || 0.1;
         const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-
-        // Calculate minimum safe distance based on sizes
-        const sA = getHalfSize(ids[i]), sB = getHalfSize(ids[j]);
-        const minDist = Math.max(sA.hw + sB.hw, sA.hh + sB.hh) + 30; // 30px padding
-
-        // Weaker repulsion for notes (so they don't push real nodes too hard)
-        const isNoteI = ids[i].startsWith('note:');
-        const isNoteJ = ids[j].startsWith('note:');
-        const repulsionK = (isNoteI || isNoteJ) ? 3000 : 8000;
-
-        let force;
-        if (dist < minDist) {
-          force = repulsionK / (dist * dist) + (minDist - dist) * 0.6;
-        } else {
-          force = repulsionK / (dist * dist);
-        }
-
+        const force = 5500 / (dist * dist);
         const fx = (dx / dist) * force, fy = (dy / dist) * force;
         forces[ids[i]].x -= fx; forces[ids[i]].y -= fy;
         forces[ids[j]].x += fx; forces[ids[j]].y += fy;
       }
     }
 
-    // Parent-child attraction (adaptive rest length based on node sizes)
+    // Parent-child attraction (strong, short, with downward bias)
     pcLinksRef.current.forEach(({ source, target }) => {
       const a = pos[source], b = pos[target];
       if (!a || !b) return;
       let dx = b.x - a.x, dy = b.y - a.y;
       const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-      // Adaptive rest length: bigger nodes need more space
-      const sA = getHalfSize(source), sB = getHalfSize(target);
-      const restLen = sA.hh + sB.hh + 80; // natural spacing
-      const force = (dist - restLen) * 0.05;
+      const force = (dist - 130) * 0.055;
       const fx = (dx / dist) * force, fy = (dy / dist) * force;
       forces[source].x += fx; forces[source].y += fy;
       forces[target].x -= fx; forces[target].y -= fy;
       // Children below parents (hierarchy bias)
       if (b.y < a.y + 50) {
-        forces[target].y += 0.8;
-        forces[source].y -= 0.3;
+        forces[target].y += 0.7;
+        forces[source].y -= 0.25;
       }
     });
 
-    // User connections (weaker, longer, also adaptive)
+    // User connections (weaker, longer)
     uLinksRef.current.forEach(({ source, target }) => {
       const a = pos[source], b = pos[target];
       if (!a || !b) return;
       let dx = b.x - a.x, dy = b.y - a.y;
       const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-      const sA = getHalfSize(source), sB = getHalfSize(target);
-      const restLen = sA.hw + sB.hw + 140;
-      const force = (dist - restLen) * 0.012;
+      const force = (dist - 200) * 0.012;
       const fx = (dx / dist) * force, fy = (dy / dist) * force;
       forces[source].x += fx; forces[source].y += fy;
       forces[target].x -= fx; forces[target].y -= fy;
     });
 
-    // Note-to-node springs (keep notes near their parent node, no hierarchy bias)
-    noteLinksRef.current.forEach(({ source, target }) => {
-      const a = pos[source], b = pos[target];
-      if (!a || !b) return;
-      let dx = b.x - a.x, dy = b.y - a.y;
-      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-      const restLen = 130; // comfortable distance from parent node
-      const force = (dist - restLen) * 0.04;
-      const fx = (dx / dist) * force, fy = (dy / dist) * force;
-      forces[source].x += fx * 0.3; forces[source].y += fy * 0.3; // weak pull on node
-      forces[target].x -= fx; forces[target].y -= fy;               // stronger pull on note
+    // Central gravity
+    ids.forEach(id => {
+      forces[id].x -= pos[id].x * 0.002;
+      forces[id].y -= pos[id].y * 0.002;
     });
 
-    // No central gravity — repulsion + links are enough to keep layout stable
-    // Central gravity was causing unconnected parent nodes to drift together
-
-    // Apply forces (skip dragged entity)
+    // Apply forces (skip dragged node)
     let totalMovement = 0;
     ids.forEach(id => {
       if (dragRef.current === id) return;
       vel[id] = vel[id] || { x: 0, y: 0 };
-      vel[id].x = (vel[id].x + forces[id].x) * 0.58;
-      vel[id].y = (vel[id].y + forces[id].y) * 0.58;
-      // Clamp velocity to prevent explosion
-      const maxV = 15;
-      vel[id].x = Math.max(-maxV, Math.min(maxV, vel[id].x));
-      vel[id].y = Math.max(-maxV, Math.min(maxV, vel[id].y));
+      vel[id].x = (vel[id].x + forces[id].x) * 0.62;
+      vel[id].y = (vel[id].y + forces[id].y) * 0.62;
       pos[id].x += vel[id].x;
       pos[id].y += vel[id].y;
       totalMovement += Math.abs(vel[id].x) + Math.abs(vel[id].y);
@@ -273,63 +170,42 @@ function useForceLayout(nodeSizesRef) {
 
   useEffect(() => () => stop(), [stop]);
 
-  return { positions, posRef, velRef, dragRef, start, stop, syncNodes, syncNotes, syncLinks };
+  return { positions, posRef, velRef, dragRef, start, stop, syncNodes, syncLinks };
 }
 
 /* ═══════════════════════════════════════════════
    Tree auto-layout calculator
-   Arranges each root tree side-by-side horizontally
-   (left to right) with proper spacing
    ═══════════════════════════════════════════════ */
 function calculateTreeLayout(nodes) {
   const pos = {};
   const roots = nodes.filter(n => !n.parent_id);
   const LEVEL_H = 160;
-  const NODE_H_SPACING = 220; // horizontal space per leaf node
-  const TREE_GAP = 120;       // gap between root trees
+  const MIN_SPACING = 100;
 
-  // Build children lookup for fast access
-  const childrenOf = {};
-  nodes.forEach(n => {
-    if (n.parent_id) {
-      if (!childrenOf[n.parent_id]) childrenOf[n.parent_id] = [];
-      childrenOf[n.parent_id].push(n);
-    }
-  });
-
-  function subtreeLeafCount(id) {
-    const kids = childrenOf[id] || [];
+  function subtreeWidth(id) {
+    const kids = nodes.filter(n => n.parent_id === id);
     if (kids.length === 0) return 1;
-    return kids.reduce((s, c) => s + subtreeLeafCount(c.id), 0);
+    return kids.reduce((s, c) => s + subtreeWidth(c.id), 0);
   }
 
-  function layoutSubtree(id, x, y, width) {
+  function layout(id, x, y, width) {
     pos[id] = { x, y };
-    const kids = childrenOf[id] || [];
+    const kids = nodes.filter(n => n.parent_id === id);
     if (kids.length === 0) return;
-    const totalLeaves = kids.reduce((s, c) => s + subtreeLeafCount(c.id), 0);
+    const totalW = kids.reduce((s, c) => s + subtreeWidth(c.id), 0);
     let cx = x - width / 2;
     kids.forEach(child => {
-      const cw = (subtreeLeafCount(child.id) / totalLeaves) * width;
-      layoutSubtree(child.id, cx + cw / 2, y + LEVEL_H, cw);
+      const cw = (subtreeWidth(child.id) / totalW) * width;
+      layout(child.id, cx + cw / 2, y + LEVEL_H, cw);
       cx += cw;
     });
   }
 
-  // Calculate each root tree's width, then place them left to right
-  const treeWidths = roots.map(r => {
-    const leaves = subtreeLeafCount(r.id);
-    return Math.max(leaves * NODE_H_SPACING, NODE_H_SPACING);
-  });
-
-  const totalWidth = treeWidths.reduce((s, w) => s + w, 0) + Math.max(0, roots.length - 1) * TREE_GAP;
-  let cursorX = -totalWidth / 2;
-
+  const totalWidth = Math.max(roots.length * MIN_SPACING * 3, 600);
   roots.forEach((r, i) => {
-    const tw = treeWidths[i];
-    const centerX = cursorX + tw / 2;
-    layoutSubtree(r.id, centerX, -200, tw);
-    cursorX += tw + TREE_GAP;
+    const rw = totalWidth / roots.length;
+    const rx = -totalWidth / 2 + rw * (i + 0.5);
+    layout(r.id, rx, -200, rw * subtreeWidth(r.id));
   });
 
   return pos;
@@ -364,7 +240,7 @@ function CanvasNode({ node, pos, size, isSelected, onMouseDown }) {
       {/* Name */}
       <text x={0} y={h > 50 ? -4 : 1} textAnchor="middle"
         fill="#f0f0f4" fontSize={fs} fontWeight={600} fontFamily="Inter,sans-serif">
-        {node.name.length > maxChars ? node.name.slice(0, maxChars - 1) + '...' : node.name}
+        {node.name.length > maxChars ? node.name.slice(0, maxChars - 1) + '…' : node.name}
       </text>
 
       {/* Stats row */}
@@ -445,46 +321,6 @@ function UserConnectionLine({ from, to, fromSize, toSize }) {
 }
 
 /* ═══════════════════════════════════════════════
-   Note text node — draggable, word-wrapped text
-   connected to parent node via a dashed line.
-   No border/block — pure text only.
-   ═══════════════════════════════════════════════ */
-function NoteTextNode({ pos, text, onMouseDown }) {
-  if (!pos || !text) return null;
-  const lines = wrapNoteText(text, 6);
-  const lineHeight = 16;
-  const fontSize = 12;
-  const totalH = lines.length * lineHeight;
-  const startY = -totalH / 2 + fontSize * 0.35; // vertically center
-
-  return (
-    <g transform={`translate(${pos.x}, ${pos.y})`} onMouseDown={onMouseDown} style={{ cursor: 'grab' }}>
-      {lines.map((line, i) => (
-        <text key={i} x={0} y={startY + i * lineHeight} textAnchor="middle"
-          fill="rgba(210,210,230,0.8)" fontSize={fontSize} fontFamily="Inter,sans-serif"
-          fontWeight={400}>
-          {line}
-        </text>
-      ))}
-    </g>
-  );
-}
-
-/* Note connection line — dashed line from node edge to note center */
-function NoteConnectionLine({ nodePos, nodeSize, notePos }) {
-  if (!nodePos || !notePos) return null;
-  const hw = nodeSize.w / 2, hh = nodeSize.h / 2;
-  const edgeStart = getEdgePoint(nodePos.x, nodePos.y, hw, hh, notePos.x, notePos.y);
-  return (
-    <g>
-      <line x1={edgeStart.x} y1={edgeStart.y} x2={notePos.x} y2={notePos.y}
-        stroke="rgba(139,92,246,0.22)" strokeWidth={1} strokeDasharray="4 4" />
-      <circle cx={edgeStart.x} cy={edgeStart.y} r={2.5} fill="rgba(139,92,246,0.35)" />
-    </g>
-  );
-}
-
-/* ═══════════════════════════════════════════════
    Node management panel (right sidebar)
    ═══════════════════════════════════════════════ */
 function NodePanel({
@@ -531,7 +367,7 @@ function NodePanel({
               onClick={() => setIsEditing(true)}>{node.name}</h2>
           )}
           <div className="flex items-center gap-2 mt-1">
-            {!node.parent_id && <span className="text-[10px] text-amber-400 font-medium">Root</span>}
+            {!node.parent_id && <span className="text-[10px] text-amber-400 font-medium">👑 Root</span>}
             {node._depth > 0 && <span className="text-[10px] text-t-4">Depth {node._depth}</span>}
           </div>
         </div>
@@ -635,7 +471,6 @@ function NodePanel({
    ═══════════════════════════════════════════════ */
 export default function NodeCanvasPage() {
   const navigate = useNavigate();
-  const { rootId: filterRootId } = useParams(); // optional — filter to single root tree
   const [allNodes, setAllNodes] = useState([]);
   const [connections, setConnections] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
@@ -644,16 +479,14 @@ export default function NodeCanvasPage() {
   const [showDelete, setShowDelete] = useState(false);
   const [nodeScales, setNodeScales] = useState({});
   const [openWindows, setOpenWindows] = useState([]);
-  const [nodeNotesData, setNodeNotesData] = useState({}); // { nodeId: "full note text" }
   const svgRef = useRef(null);
   const [viewBox, setViewBox] = useState({ x: -600, y: -400, w: 1200, h: 800 });
   const [isPanning, setIsPanning] = useState(false);
   const panStart = useRef({ x: 0, y: 0, vx: 0, vy: 0 });
   const lastClickRef = useRef({ id: null, time: 0 });
-  const nodeSizesRef = useRef({});
 
-  const { positions, posRef, velRef, dragRef, start: startPhysics, stop: stopPhysics, syncNodes, syncNotes, syncLinks } =
-    useForceLayout(nodeSizesRef);
+  const { positions, posRef, velRef, dragRef, start: startPhysics, stop: stopPhysics, syncNodes, syncLinks } =
+    useForceLayout();
 
   // Build links from data
   const parentChildLinks = useMemo(() =>
@@ -667,17 +500,12 @@ export default function NodeCanvasPage() {
 
   useEffect(() => { syncLinks(parentChildLinks, userLinks); }, [parentChildLinks, userLinks]);
 
-  // ── Load nodes recursively (filtered by rootId if present) ──
-  useEffect(() => { loadData(); }, [filterRootId]);
+  // ── Load ALL nodes recursively ────────────────
+  useEffect(() => { loadData(); }, []);
 
   async function loadData() {
-    let roots = await api.getWorkspaceRootNodes();
-    // If viewing a specific root, only load that root's tree
-    if (filterRootId) {
-      roots = roots.filter(r => r.id === filterRootId);
-    }
+    const roots = await api.getWorkspaceRootNodes();
     const all = [];
-    const notesMap = {}; // nodeId -> concatenated note text
 
     async function loadRecursive(nodeList, depth) {
       for (const node of nodeList) {
@@ -695,37 +523,13 @@ export default function NodeCanvasPage() {
           _noteCount: notes.length,
           _childCount: children.length,
         });
-
-        // Collect note text for canvas display
-        if (notes.length > 0) {
-          notesMap[node.id] = notes.map(n => n.content).filter(Boolean).join('\n');
-        }
-
         if (children.length > 0) await loadRecursive(children, depth + 1);
       }
     }
 
     await loadRecursive(roots, 0);
     setAllNodes(all);
-    setNodeNotesData(notesMap);
     syncNodes(all);
-
-    // Update nodeSizesRef for force layout (nodes)
-    const sizesMap = {};
-    all.forEach(n => { sizesMap[n.id] = getNodeSize(n._depth, nodeScales[n.id]); });
-
-    // Sync note pseudo-nodes into force layout
-    const noteEntries = Object.entries(notesMap)
-      .filter(([, text]) => text && text.trim())
-      .map(([nodeId, text]) => {
-        const noteId = `note:${nodeId}`;
-        // Store note sizes for force layout repulsion
-        sizesMap[noteId] = estimateNoteSize(text);
-        return { id: noteId, parentId: nodeId };
-      });
-
-    nodeSizesRef.current = sizesMap;
-    syncNotes(noteEntries);
 
     try {
       const conns = await api.getAllNodeConnections();
@@ -781,11 +585,11 @@ export default function NodeCanvasPage() {
         const now = Date.now();
         const last = lastClickRef.current;
         if (last.id === nodeId && (now - last.time) < DBL_CLICK_MS) {
-          // Double-click => open floating window
+          // Double-click → open floating window
           lastClickRef.current = { id: null, time: 0 };
           toggleWindow(nodeId);
         } else {
-          // Single click => select + show panel
+          // Single click → select + show panel
           lastClickRef.current = { id: nodeId, time: now };
           setSelectedId(prev => {
             const newId = prev === nodeId ? null : nodeId;
@@ -793,52 +597,6 @@ export default function NodeCanvasPage() {
             return newId;
           });
         }
-      }
-    }
-
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-  }
-
-  // ── Note drag (same pattern, but for note pseudo-nodes) ──
-  function handleNoteMouseDown(noteId, e) {
-    e.preventDefault();
-    e.stopPropagation();
-    const svg = svgRef.current;
-    const startX = e.clientX, startY = e.clientY;
-    const startSVG = screenToSVG(svg, startX, startY);
-    const startPos = { ...(posRef.current[noteId] || { x: 0, y: 0 }) };
-    let isDragging = false;
-
-    function onMove(me) {
-      const delta = Math.abs(me.clientX - startX) + Math.abs(me.clientY - startY);
-      if (!isDragging && delta > DRAG_THRESHOLD) {
-        isDragging = true;
-        dragRef.current = noteId;
-        startPhysics();
-      }
-      if (isDragging) {
-        const cur = screenToSVG(svg, me.clientX, me.clientY);
-        posRef.current[noteId] = {
-          x: startPos.x + (cur.x - startSVG.x),
-          y: startPos.y + (cur.y - startSVG.y),
-        };
-      }
-    }
-
-    function onUp() {
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-      if (isDragging) {
-        dragRef.current = null;
-      } else {
-        // Click on note => select the parent node + show panel
-        const parentNodeId = noteId.replace('note:', '');
-        setSelectedId(prev => {
-          const newId = prev === parentNodeId ? null : parentNodeId;
-          setShowPanel(!!newId);
-          return newId;
-        });
       }
     }
 
@@ -946,15 +704,6 @@ export default function NodeCanvasPage() {
       if (velRef.current[id]) velRef.current[id] = { x: 0, y: 0 };
       api.updateWorkspaceNode(id, { pos_x: Math.round(p.x), pos_y: Math.round(p.y) });
     });
-    // Also reposition notes near their parent after tree layout
-    Object.keys(nodeNotesData).forEach(nodeId => {
-      const noteId = `note:${nodeId}`;
-      const parentPos = treePos[nodeId] || posRef.current[nodeId];
-      if (parentPos && posRef.current[noteId]) {
-        posRef.current[noteId] = { x: parentPos.x + 160, y: parentPos.y - 40 };
-        if (velRef.current[noteId]) velRef.current[noteId] = { x: 0, y: 0 };
-      }
-    });
     startPhysics();
   }
 
@@ -972,16 +721,8 @@ export default function NodeCanvasPage() {
         {/* ── Toolbar ─── */}
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-s-6/30 bg-s-2 shrink-0">
           <div className="flex items-center gap-2">
-            <div className="flex items-center">
-              <Breadcrumb items={filterRootId ? [
-                { label: 'Node Workspace', path: '/node-canvas', icon: <Network className="w-3 h-3" /> },
-                { label: allNodes.find(n => !n.parent_id)?.name || 'Root', path: `/node-canvas/${filterRootId}` },
-                { label: 'Canvas' },
-              ] : [
-                { label: 'Node Workspace', path: '/node-canvas', icon: <Network className="w-3 h-3" /> },
-                { label: 'Canvas' },
-              ]} />
-            </div>
+            <Network className="w-4 h-4 text-accent-400" />
+            <span className="text-sm font-semibold text-t-1">Node Workspace</span>
             <span className="text-[10px] text-t-4 bg-s-4/60 px-2 py-0.5 rounded-full ml-1">
               {allNodes.length} node{allNodes.length !== 1 ? 's' : ''}
             </span>
@@ -1030,20 +771,6 @@ export default function NodeCanvasPage() {
               );
             })}
 
-            {/* Note connection lines — dashed lines from node to note text */}
-            {Object.entries(nodeNotesData).map(([nodeId, text]) => {
-              if (!text || !text.trim()) return null;
-              const noteId = `note:${nodeId}`;
-              const node = allNodes.find(n => n.id === nodeId);
-              if (!node) return null;
-              return (
-                <NoteConnectionLine key={`nc-${nodeId}`}
-                  nodePos={positions[nodeId]}
-                  nodeSize={getNodeSize(node._depth, nodeScales[nodeId])}
-                  notePos={positions[noteId]} />
-              );
-            })}
-
             {/* Nodes — render deeper first so parents draw on top */}
             {[...allNodes].sort((a, b) => b._depth - a._depth).map(node => (
               <CanvasNode key={node.id} node={node}
@@ -1052,18 +779,6 @@ export default function NodeCanvasPage() {
                 isSelected={selectedId === node.id}
                 onMouseDown={e => handleNodeMouseDown(node.id, e)} />
             ))}
-
-            {/* Note text nodes — draggable, no border, word-wrapped */}
-            {Object.entries(nodeNotesData).map(([nodeId, text]) => {
-              if (!text || !text.trim()) return null;
-              const noteId = `note:${nodeId}`;
-              return (
-                <NoteTextNode key={noteId}
-                  pos={positions[noteId]}
-                  text={text}
-                  onMouseDown={e => handleNoteMouseDown(noteId, e)} />
-              );
-            })}
 
             {/* Empty state */}
             {allNodes.length === 0 && (
@@ -1123,7 +838,7 @@ function CreateNodeModal({ isOpen, onClose, onCreated }) {
           <label className="label">Node Name</label>
           <input className="input" value={name} onChange={e => setName(e.target.value)}
             placeholder="e.g. Build Script System" autoFocus />
-          <p className="text-2xs text-t-4 mt-1.5">Root nodes appear at the top level with a crown.</p>
+          <p className="text-2xs text-t-4 mt-1.5">Root nodes appear at the top level with a 👑 crown.</p>
         </div>
         <div className="flex justify-end gap-2 pt-2">
           <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
