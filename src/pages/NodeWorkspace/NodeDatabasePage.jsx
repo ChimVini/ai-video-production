@@ -318,7 +318,7 @@ export default function NodeDatabasePage() {
           </div>
           <div className="flex items-center gap-2">
             <button className="btn-ghost text-xs flex items-center gap-1.5"
-              onClick={() => navigate('/node-canvas/view')}>
+              onClick={() => navigate(`/node-canvas/view/${rootId}`)}>
               <Eye className="w-3.5 h-3.5" /> Canvas View
             </button>
             <button className="btn-primary text-xs flex items-center gap-1.5"

@@ -34,6 +34,7 @@ export default function App() {
             <Route path="/resources" element={<ResourcesPage />} />
             <Route path="/node-canvas" element={<NodeDatabasePage />} />
             <Route path="/node-canvas/view" element={<NodeCanvasPage />} />
+            <Route path="/node-canvas/view/:rootId" element={<NodeCanvasPage />} />
             <Route path="/node-canvas/:rootId" element={<NodeDatabasePage />} />
             <Route path="/node-workspace/:nodeId" element={<NodeWorkspacePage />} />
           </Routes>

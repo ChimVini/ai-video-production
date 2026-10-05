@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
   Plus, Trash2, Network, X, ChevronRight, ChevronDown,
   ZoomIn, ZoomOut, ListTodo, StickyNote, GitBranch, Minus,
@@ -166,11 +166,8 @@ function useForceLayout(nodeSizesRef) {
       forces[target].x -= fx; forces[target].y -= fy;
     });
 
-    // Central gravity (gentle)
-    ids.forEach(id => {
-      forces[id].x -= pos[id].x * 0.0015;
-      forces[id].y -= pos[id].y * 0.0015;
-    });
+    // No central gravity — repulsion + links are enough to keep layout stable
+    // Central gravity was causing unconnected parent nodes to drift together
 
     // Apply forces (skip dragged node)
     let totalMovement = 0;
@@ -583,6 +580,7 @@ function NodePanel({
    ═══════════════════════════════════════════════ */
 export default function NodeCanvasPage() {
   const navigate = useNavigate();
+  const { rootId: filterRootId } = useParams(); // optional — filter to single root tree
   const [allNodes, setAllNodes] = useState([]);
   const [connections, setConnections] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
@@ -614,11 +612,15 @@ export default function NodeCanvasPage() {
 
   useEffect(() => { syncLinks(parentChildLinks, userLinks); }, [parentChildLinks, userLinks]);
 
-  // ── Load ALL nodes recursively ────────────────
-  useEffect(() => { loadData(); }, []);
+  // ── Load nodes recursively (filtered by rootId if present) ──
+  useEffect(() => { loadData(); }, [filterRootId]);
 
   async function loadData() {
-    const roots = await api.getWorkspaceRootNodes();
+    let roots = await api.getWorkspaceRootNodes();
+    // If viewing a specific root, only load that root's tree
+    if (filterRootId) {
+      roots = roots.filter(r => r.id === filterRootId);
+    }
     const all = [];
 
     async function loadRecursive(nodeList, depth) {
@@ -859,7 +861,11 @@ export default function NodeCanvasPage() {
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-s-6/30 bg-s-2 shrink-0">
           <div className="flex items-center gap-2">
             <div className="flex items-center">
-              <Breadcrumb items={[
+              <Breadcrumb items={filterRootId ? [
+                { label: 'Node Workspace', path: '/node-canvas', icon: <Network className="w-3 h-3" /> },
+                { label: allNodes.find(n => !n.parent_id)?.name || 'Root', path: `/node-canvas/${filterRootId}` },
+                { label: 'Canvas' },
+              ] : [
                 { label: 'Node Workspace', path: '/node-canvas', icon: <Network className="w-3 h-3" /> },
                 { label: 'Canvas' },
               ]} />
