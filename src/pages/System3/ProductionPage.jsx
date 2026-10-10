@@ -5,7 +5,7 @@ import PageHeader from '../../components/Layout/PageHeader';
 import Modal from '../../components/common/Modal';
 import StatusBadge from '../../components/common/StatusBadge';
 import EmptyState from '../../components/common/EmptyState';
-import { SHOT_DURATIONS, SHOT_DOT_COLORS, SHOT_BLOCK_COLORS, formatStatus } from '../../utils/helpers';
+import { SHOT_DURATIONS, SHOT_DOT_COLORS, SHOT_BLOCK_COLORS, formatStatus, PRODUCTION_MODES } from '../../utils/helpers';
 
 const api = window.api;
 
@@ -90,6 +90,26 @@ export default function ProductionPage() {
           </select>
         )}
       </div>
+
+      {/* Production Mode Banner */}
+      {project && (
+        <div className="mb-5 px-4 py-3 rounded-xl border border-s-6/30 bg-s-3/30 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-t-3 uppercase tracking-wider">Production Mode:</span>
+            <span className="text-sm font-semibold text-t-1">
+              {PRODUCTION_MODES.find(m => m.value === project.production_mode)?.label || 'Reference-driven'}
+            </span>
+            <span className="text-xs text-t-4">
+              — {PRODUCTION_MODES.find(m => m.value === project.production_mode)?.description || ''}
+            </span>
+          </div>
+          {project.production_mode === 'shot_controlled' && (
+            <span className="text-xs px-2 py-0.5 rounded bg-amber-500/20 text-amber-400">
+              Full control: each shot requires explicit state vectors
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Stats bar */}
       <div className="grid grid-cols-4 gap-3 mb-5">

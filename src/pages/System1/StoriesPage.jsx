@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, BookOpen, Trash2, Edit3 } from 'lucide-react';
+import { Plus, BookOpen, Trash2, Edit3, Lightbulb, FileText, Layout, ScrollText, Film, Clapperboard, CheckCircle, ArrowRight } from 'lucide-react';
 import PageHeader from '../../components/Layout/PageHeader';
 import Modal from '../../components/common/Modal';
 import ConfirmDialog from '../../components/common/ConfirmDialog';
@@ -7,6 +7,58 @@ import StatusBadge from '../../components/common/StatusBadge';
 import EmptyState from '../../components/common/EmptyState';
 
 const api = window.api;
+
+/* Content Development Workflow (Spec §6.2) */
+const CONTENT_WORKFLOW_STAGES = [
+  { key: 'idea', label: 'Idea', icon: Lightbulb, desc: 'Initial concept and topic' },
+  { key: 'brief', label: 'Project Brief', icon: FileText, desc: 'Objectives, audience, duration' },
+  { key: 'architecture', label: 'Content Architecture', icon: Layout, desc: 'Narrative structure, pacing' },
+  { key: 'script', label: 'Script', icon: ScrollText, desc: 'Full story with actions and dialogue' },
+  { key: 'scene', label: 'Scene Breakdown', icon: Film, desc: 'Scenes with characters, context' },
+  { key: 'shot', label: 'Shot Planning', icon: Clapperboard, desc: 'Camera, framing, shot list' },
+];
+
+function ContentWorkflowStepper({ project }) {
+  // Derive stage from project data: check what data exists
+  const stage = deriveContentStage(project);
+
+  return (
+    <div className="card mb-5">
+      <h3 className="text-xs font-semibold text-t-3 uppercase tracking-wider mb-3">Content Development Workflow</h3>
+      <div className="flex items-center gap-1">
+        {CONTENT_WORKFLOW_STAGES.map((s, i) => {
+          const isComplete = i < stage;
+          const isCurrent = i === stage;
+          return (
+            <React.Fragment key={s.key}>
+              <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-2xs transition-colors ${
+                isComplete ? 'bg-green-500/15 text-green-400' :
+                isCurrent ? 'bg-accent-600/20 text-accent-400 ring-1 ring-accent-500/40' :
+                'bg-s-3 text-t-4'
+              }`}>
+                {isComplete ? <CheckCircle className="w-3 h-3" /> : <s.icon className="w-3 h-3" />}
+                <span className="font-medium whitespace-nowrap">{s.label}</span>
+              </div>
+              {i < CONTENT_WORKFLOW_STAGES.length - 1 && (
+                <ArrowRight className={`w-3 h-3 shrink-0 ${isComplete ? 'text-green-500/50' : 'text-s-6/50'}`} />
+              )}
+            </React.Fragment>
+          );
+        })}
+      </div>
+      <p className="text-2xs text-t-4 mt-2">
+        Current: <span className="text-t-2 font-medium">{CONTENT_WORKFLOW_STAGES[Math.min(stage, CONTENT_WORKFLOW_STAGES.length - 1)].desc}</span>
+      </p>
+    </div>
+  );
+}
+
+function deriveContentStage(project) {
+  if (!project) return 0;
+  // The stage is derived from project status mapping
+  const statusMap = { idea: 0, development: 2, visual_development: 3, planning: 4, generation: 5, editing: 5, completed: 5 };
+  return statusMap[project.production_status] ?? 0;
+}
 
 export default function StoriesPage() {
   const [projects, setProjects] = useState([]);
@@ -53,6 +105,11 @@ export default function StoriesPage() {
           {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
       </div>
+
+      {/* Guided Content Development Workflow (Spec §6.2) */}
+      {selectedProject && (
+        <ContentWorkflowStepper project={projects.find(p => p.id === selectedProject)} />
+      )}
 
       {stories.length === 0 ? (
         <EmptyState icon={BookOpen} title="No stories yet" description="Start developing your story for this project." />

@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const { initDatabase, getDb } = require('./database/index.js');
 const { registerIpcHandlers } = require('./database/ipc-handlers.js');
+const { registerVeoIpcHandlers } = require('./services/veo-service.js');
 
 let mainWindow;
 
@@ -32,6 +33,7 @@ function createWindow() {
 app.whenReady().then(() => {
   initDatabase();
   registerIpcHandlers(ipcMain);
+  registerVeoIpcHandlers(ipcMain);
   createWindow();
 
   app.on('activate', () => {

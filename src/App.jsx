@@ -11,9 +11,19 @@ import VisualAssetsPage from './pages/System2/VisualAssetsPage';
 import ProductionPage from './pages/System3/ProductionPage';
 import ShotWorkspace from './pages/System3/ShotWorkspace';
 import ResourcesPage from './pages/Resources/ResourcesPage';
+import ResourceLibraryPage from './pages/ResourceLibrary/ResourceLibraryPage';
+import WorkflowListPage from './pages/ProductionCanvas/WorkflowListPage';
+import ProductionCanvasPage from './pages/ProductionCanvas/ProductionCanvasPage';
+import ProviderConfigPage from './pages/ProviderConfig/ProviderConfigPage';
+import ProductionHistoryPage from './pages/ProductionHistory/ProductionHistoryPage';
+import LocationsPage from './pages/System3/LocationsPage';
+import PromptTemplatesPage from './pages/Workspace/PromptTemplatesPage';
 import NodeDatabasePage from './pages/NodeWorkspace/NodeDatabasePage';
 import NodeCanvasPage from './pages/NodeWorkspace/NodeCanvasPage';
 import NodeWorkspacePage from './pages/NodeWorkspace/NodeWorkspacePage';
+import ImpactDependencyPage from './pages/ImpactView/ImpactDependencyPage';
+import ValidationPage from './pages/Validation/ValidationPage';
+import ContinuityPage from './pages/Continuity/ContinuityPage';
 
 export default function App() {
   return (
@@ -31,7 +41,20 @@ export default function App() {
             <Route path="/visual-assets" element={<VisualAssetsPage />} />
             <Route path="/production" element={<ProductionPage />} />
             <Route path="/production/shot/:id" element={<ShotWorkspace />} />
+            <Route path="/locations" element={<LocationsPage />} />
             <Route path="/resources" element={<ResourcesPage />} />
+            {/* System 4 — Production Workspace */}
+            <Route path="/resource-library" element={<ResourceLibraryPage />} />
+            <Route path="/workflows" element={<WorkflowListPage />} />
+            <Route path="/workflows/:workflowId" element={<ProductionCanvasPage />} />
+            <Route path="/providers" element={<ProviderConfigPage />} />
+            <Route path="/prompt-templates" element={<PromptTemplatesPage />} />
+            <Route path="/history" element={<ProductionHistoryPage />} />
+            {/* Impact/Dependency & Validation */}
+            <Route path="/impact" element={<ImpactDependencyPage />} />
+            <Route path="/validation" element={<ValidationPage />} />
+            <Route path="/continuity" element={<ContinuityPage />} />
+            {/* Legacy Node Workspace */}
             <Route path="/node-canvas" element={<NodeDatabasePage />} />
             <Route path="/node-canvas/view" element={<NodeCanvasPage />} />
             <Route path="/node-canvas/view/:rootId" element={<NodeCanvasPage />} />

@@ -2,7 +2,8 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, FolderKanban, BookOpen, Users, Globe,
-  Palette, Clapperboard, Library, Film, Network
+  Palette, Clapperboard, Library, Film, Network, Box, Workflow, Server, History,
+  MapPin, Sparkles, GitBranch, ShieldCheck, Link2
 } from 'lucide-react';
 
 const navItems = [
@@ -14,7 +15,7 @@ const navItems = [
     ],
   },
   {
-    section: 'System 1 — Development',
+    section: 'System 1 — Content',
     items: [
       { to: '/stories', icon: BookOpen, label: 'Stories' },
       { to: '/characters', icon: Users, label: 'Characters' },
@@ -22,26 +23,35 @@ const navItems = [
     ],
   },
   {
-    section: 'System 2 — Visual',
+    section: 'System 2 — Character',
     items: [
       { to: '/visual-assets', icon: Palette, label: 'Visual Assets' },
     ],
   },
   {
-    section: 'System 3 — Production',
+    section: 'System 3 — Context',
     items: [
       { to: '/production', icon: Clapperboard, label: 'Production' },
+      { to: '/locations', icon: MapPin, label: 'Locations' },
     ],
   },
   {
-    section: 'Workspace',
+    section: 'System 4 — Workspace',
+    items: [
+      { to: '/resource-library', icon: Box, label: 'Resource Library' },
+      { to: '/workflows', icon: Workflow, label: 'Workflows' },
+      { to: '/prompt-templates', icon: Sparkles, label: 'Prompt Templates' },
+      { to: '/providers', icon: Server, label: 'Providers' },
+      { to: '/history', icon: History, label: 'History' },
+      { to: '/impact', icon: GitBranch, label: 'Impact View' },
+      { to: '/validation', icon: ShieldCheck, label: 'Validation' },
+      { to: '/continuity', icon: Link2, label: 'Continuity' },
+    ],
+  },
+  {
+    section: 'Legacy',
     items: [
       { to: '/node-canvas', icon: Network, label: 'Node Workspace' },
-    ],
-  },
-  {
-    section: 'Library',
-    items: [
       { to: '/resources', icon: Library, label: 'Resources' },
     ],
   },
