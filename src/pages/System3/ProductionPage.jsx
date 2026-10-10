@@ -69,7 +69,7 @@ export default function ProductionPage() {
     <div className="w-full">
       <PageHeader
         title="Production Pipeline"
-        subtitle="System 3 — Script → Scene → Shot → Prompt → Generate → Review"
+        subtitle="Script → Scene → Shot → Prompt → Generate → Review"
         actions={
           <button className="btn-primary flex items-center gap-2" onClick={() => setShowAddScene(true)} disabled={!selectedProject}>
             <Plus className="w-4 h-4" /> Add Scene

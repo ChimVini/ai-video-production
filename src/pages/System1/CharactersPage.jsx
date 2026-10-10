@@ -94,7 +94,7 @@ export default function CharactersPage() {
     <div className="w-full">
       <PageHeader
         title="Character Development"
-        subtitle="System 1 — Personality, Background, Relationships"
+        subtitle="Personality, Background, Relationships"
         actions={
           <button className="btn-primary flex items-center gap-2" onClick={() => setShowCreate(true)} disabled={!selectedProject}>
             <Plus className="w-4 h-4" /> New Character

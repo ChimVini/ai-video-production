@@ -37,7 +37,7 @@ export default function WorldsPage() {
     <div className="w-full">
       <PageHeader
         title="World Development"
-        subtitle="System 1 — Rules, Locations, Settings"
+        subtitle="Rules, Locations, Settings"
         actions={
           <button className="btn-primary flex items-center gap-2" onClick={() => setShowCreate(true)} disabled={!selectedProject}>
             <Plus className="w-4 h-4" /> New World

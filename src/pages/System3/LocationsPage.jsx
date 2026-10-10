@@ -48,7 +48,7 @@ export default function LocationsPage() {
     <div className="w-full">
       <PageHeader
         title="Locations"
-        subtitle="System 3 — Places & Spaces in Your World"
+        subtitle="Places & Spaces in Your World"
         actions={
           <button className="btn-primary flex items-center gap-2" onClick={() => setShowCreate(true)} disabled={!selectedWorld}>
             <Plus className="w-4 h-4" /> New Location

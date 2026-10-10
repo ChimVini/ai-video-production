@@ -92,7 +92,7 @@ export default function StoriesPage() {
     <div className="w-full">
       <PageHeader
         title="Story Development"
-        subtitle="System 1 — Plot, Theme, Structure"
+        subtitle="Plot, Theme, Structure"
         actions={
           <button className="btn-primary flex items-center gap-2" onClick={() => setShowCreate(true)} disabled={!selectedProject}>
             <Plus className="w-4 h-4" /> New Story

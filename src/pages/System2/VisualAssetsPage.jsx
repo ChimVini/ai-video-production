@@ -52,7 +52,7 @@ export default function VisualAssetsPage() {
     <div className="w-full">
       <PageHeader
         title="Visual Assets"
-        subtitle="System 2 — Character Design, Environments, Architecture"
+        subtitle="Character Design, Environments, Architecture"
         actions={
           <button className="btn-primary flex items-center gap-2" onClick={() => setShowCreate(true)} disabled={!selectedProject}>
             <Plus className="w-4 h-4" /> New Asset

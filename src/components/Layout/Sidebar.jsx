@@ -15,37 +15,37 @@ const navItems = [
     ],
   },
   {
-    section: 'System 1 — Content',
+    section: 'Content',
     items: [
       { to: '/stories', icon: BookOpen, label: 'Stories' },
       { to: '/characters', icon: Users, label: 'Characters' },
       { to: '/worlds', icon: Globe, label: 'Worlds' },
-    ],
-  },
-  {
-    section: 'System 2 — Character',
-    items: [
       { to: '/visual-assets', icon: Palette, label: 'Visual Assets' },
     ],
   },
   {
-    section: 'System 3 — Context',
+    section: 'Production',
     items: [
-      { to: '/production', icon: Clapperboard, label: 'Production' },
+      { to: '/production', icon: Clapperboard, label: 'Scenes & Shots' },
       { to: '/locations', icon: MapPin, label: 'Locations' },
+      { to: '/continuity', icon: Link2, label: 'Continuity' },
     ],
   },
   {
-    section: 'System 4 — Workspace',
+    section: 'Workspace',
     items: [
-      { to: '/resource-library', icon: Box, label: 'Resource Library' },
       { to: '/workflows', icon: Workflow, label: 'Workflows' },
       { to: '/prompt-templates', icon: Sparkles, label: 'Prompt Templates' },
+      { to: '/resource-library', icon: Box, label: 'Resource Library' },
       { to: '/providers', icon: Server, label: 'Providers' },
+    ],
+  },
+  {
+    section: 'Quality & History',
+    items: [
       { to: '/history', icon: History, label: 'History' },
-      { to: '/impact', icon: GitBranch, label: 'Impact View' },
       { to: '/validation', icon: ShieldCheck, label: 'Validation' },
-      { to: '/continuity', icon: Link2, label: 'Continuity' },
+      { to: '/impact', icon: GitBranch, label: 'Impact View' },
     ],
   },
   {
